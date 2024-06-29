@@ -9,7 +9,17 @@ const image_byte_size = image_width * image_height * 3;
 const processing_byte_budget = 8192;
 
 pub fn main() !u8 {
+
+    const image_file_name = "matrixCockpit.png";
+
+    std.debug.print("\nDevices:\n", .{});
+    var ports = try zig_serial.list();
+    while (try ports.next()) |port| {
+        std.debug.print("\t{s}: {s}\n", .{ port.file_name, port.driver orelse "No Driver Info" });
+    }
+
     const port_name = if (@import("builtin").os.tag == .windows) "\\\\.\\COM7" else "/dev/ttyUSB6";
+    std.debug.print("\nUsing {s}...\n\n", .{ port_name });
 
     var serial = std.fs.cwd().openFile(port_name, .{ .mode = .read_write }) catch |err| switch (err) {
         error.FileNotFound => {
@@ -18,7 +28,7 @@ pub fn main() !u8 {
         },
         error.AccessDenied => {
             std.debug.print(
-                "Access Denied: Ensure port is not already in use, and run {s}",
+                "Access Denied: Ensure port is not already in use, or possibly try running {s}",
                 .{ if (@import("builtin").os.tag == .windows) "as Administrator.\n" else "with elevated privileges\n" }
             );
             return 1;
@@ -43,13 +53,14 @@ pub fn main() !u8 {
     zstbi.init(alloc);
     defer zstbi.deinit();
 
-    var image = try zstbi.Image.loadFromFile("matrixCockpit.png", 3);
+    std.debug.print("Sending {s}...\n", .{ image_file_name });
+    var image = try zstbi.Image.loadFromFile(image_file_name, 3);
     defer image.deinit();
 
     if (image.width != image_width or image.height != image_height) return error.IncorrectImageDimensions;
 
     var message = try std.ArrayList(u8).initCapacity(alloc, image_byte_size);
-    const dimmer_divisor = 1;
+    const dimmer_divisor = 4;
     createImageMessage(&message, dimmer_divisor, &image);
 
     try serial.writer().writeAll(message.items);
