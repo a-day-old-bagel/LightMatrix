@@ -1,0 +1,12 @@
+.{
+    .name = "LightMatrix",
+    .version = "0.14.0",
+    .dependencies = .{
+        .serial = .{ .path = "serial" },
+    },
+    .paths = .{
+        "main.zig",
+        "build.zig",
+        "build.zig.zon",
+    },
+}
