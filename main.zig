@@ -60,7 +60,7 @@ pub fn main() !u8 {
     if (image.width != image_width or image.height != image_height) return error.IncorrectImageDimensions;
 
     var message = try std.ArrayList(u8).initCapacity(alloc, image_byte_size);
-    const dimmer_divisor = 4;
+    const dimmer_divisor = 1;
     createImageMessage(&message, dimmer_divisor, &image);
 
     try serial.writer().writeAll(message.items);
