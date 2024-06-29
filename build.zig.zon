@@ -3,6 +3,7 @@
     .version = "0.14.0",
     .dependencies = .{
         .serial = .{ .path = "serial" },
+        .zstbi = .{ .path = "zig-gamedev/libs/zstbi" },
     },
     .paths = .{
         "main.zig",
