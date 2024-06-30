@@ -6,11 +6,9 @@ const image_width = 32;
 const image_height = 16;
 const image_byte_size = image_width * image_height * 3;
 
-const processing_byte_budget = 8192;
-
 pub fn main() !u8 {
 
-    const image_file_name = "matrixCockpit.png";
+    const image_sequence_dir = "shark_frames";
 
     std.debug.print("\nDevices:\n", .{});
     var ports = try zig_serial.list();
@@ -18,7 +16,7 @@ pub fn main() !u8 {
         std.debug.print("\t{s}: {s}\n", .{ port.file_name, port.driver orelse "No Driver Info" });
     }
 
-    const port_name = if (@import("builtin").os.tag == .windows) "\\\\.\\COM7" else "/dev/ttyUSB6";
+    const port_name = if (@import("builtin").os.tag == .windows) "\\\\.\\COM8" else "/dev/ttyUSB6";
     std.debug.print("\nUsing {s}...\n\n", .{ port_name });
 
     var serial = std.fs.cwd().openFile(port_name, .{ .mode = .read_write }) catch |err| switch (err) {
@@ -45,25 +43,32 @@ pub fn main() !u8 {
         .handshake = .none,
     });
 
-    var page_alloc: std.mem.Allocator = std.heap.page_allocator;
-    const fixed_buffer = try page_alloc.alloc(u8, image_byte_size + processing_byte_budget);
-    var heap = std.heap.FixedBufferAllocator.init(fixed_buffer);
-    const alloc: std.mem.Allocator = heap.allocator();
+    var heap = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = heap.deinit(); // memory leak check inside deinit
+    const alloc = heap.allocator();
 
     zstbi.init(alloc);
     defer zstbi.deinit();
 
-    std.debug.print("Sending {s}...\n", .{ image_file_name });
-    var image = try zstbi.Image.loadFromFile(image_file_name, 3);
-    defer image.deinit();
+    const cwd = std.fs.cwd();
+    std.debug.print("Sending {s}...\n", .{ image_sequence_dir });
+    const seq_dir = try cwd.openDir(image_sequence_dir, .{ .iterate = true });
+    var seq_it = seq_dir.iterate();
+    while (try seq_it.next()) |file_entry| {
+        const file_name = try std.fmt.allocPrintZ(alloc, "{s}/{s}", .{ image_sequence_dir, file_entry.name });
+        defer alloc.free(file_name);
+        std.debug.print("\t{s}\n", .{ file_name });
 
-    if (image.width != image_width or image.height != image_height) return error.IncorrectImageDimensions;
+        var image = try zstbi.Image.loadFromFile(file_name, 3);
+        defer image.deinit();
+        if (image.width != image_width or image.height != image_height) return error.IncorrectImageDimensions;
 
-    var message = try std.ArrayList(u8).initCapacity(alloc, image_byte_size);
-    const dimmer_divisor = 1;
-    createImageMessage(&message, dimmer_divisor, &image);
+        var message = try std.ArrayList(u8).initCapacity(alloc, image_byte_size);
+        const dimmer_divisor = 1;
+        createImageMessage(&message, dimmer_divisor, &image);
 
-    try serial.writer().writeAll(message.items);
+        try serial.writer().writeAll(message.items);
+    }
 
     return 0;
 }
