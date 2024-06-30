@@ -8,7 +8,7 @@ const image_byte_size = image_width * image_height * 3;
 
 pub fn main() !u8 {
 
-    const image_sequence_dir = "shark_frames";
+    const image_sequence_dir = "cockpit_panorama_frames";
     const send_compressed = true;
 
     std.debug.print("\nDevices:\n", .{});
