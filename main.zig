@@ -9,6 +9,7 @@ const image_byte_size = image_width * image_height * 3;
 pub fn main() !u8 {
 
     const image_sequence_dir = "shark_frames";
+    const send_compressed = true;
 
     std.debug.print("\nDevices:\n", .{});
     var ports = try zig_serial.list();
@@ -63,37 +64,66 @@ pub fn main() !u8 {
         defer image.deinit();
         if (image.width != image_width or image.height != image_height) return error.IncorrectImageDimensions;
 
-        var message = try std.ArrayList(u8).initCapacity(alloc, image_byte_size);
         const dimmer_divisor = 1;
-        createImageMessage(&message, dimmer_divisor, &image);
-
-        try serial.writer().writeAll(message.items);
+        if (send_compressed) {
+            var message = try std.ArrayList(u8).initCapacity(alloc, image_width * image_height * 2);
+            defer message.deinit();
+            createImageMessageCompressed(&message, dimmer_divisor, &image);
+            try serial.writer().writeAll(message.items);
+        } else {
+            var message = try std.ArrayList(u8).initCapacity(alloc, image_byte_size);
+            defer message.deinit();
+            createImageMessage(&message, dimmer_divisor, &image);
+            try serial.writer().writeAll(message.items);
+        }
     }
 
     return 0;
 }
 
-fn createImageMessage(arrayList: *std.ArrayList(u8), dimmer_divisor: u8, image: *const zstbi.Image) void {
-    arrayList.clearRetainingCapacity();
-    for (0..arrayList.capacity / 3) |i| {
+fn createImageMessage(pixel_list: *std.ArrayList(u8), dimmer_divisor: u8, image: *const zstbi.Image) void {
+    pixel_list.clearRetainingCapacity();
+    for (0..pixel_list.capacity / 3) |i| {
         const col_index = i / 16;
         var row_index = i % 16;
         if (col_index % 2 == 1) row_index = 15 - row_index;
         const pixel_base_index = (row_index * 32 + col_index) * 3;
-        arrayList.appendAssumeCapacity(image.data[pixel_base_index + 0] / dimmer_divisor);
-        arrayList.appendAssumeCapacity(image.data[pixel_base_index + 1] / dimmer_divisor);
-        arrayList.appendAssumeCapacity(image.data[pixel_base_index + 2] / dimmer_divisor);
+        pixel_list.appendAssumeCapacity(image.data[pixel_base_index + 0] / dimmer_divisor);
+        pixel_list.appendAssumeCapacity(image.data[pixel_base_index + 1] / dimmer_divisor);
+        pixel_list.appendAssumeCapacity(image.data[pixel_base_index + 2] / dimmer_divisor);
     }
 }
 
-fn createTestPattern(arrayList: *std.ArrayList(u8), dimmer_divisor: u8) void {
-    arrayList.clearRetainingCapacity();
-    for (0..arrayList.capacity / 3) |i| {
+fn createImageMessageCompressed(pixel_list: *std.ArrayList(u8), dimmer_divisor: u8, image: *const zstbi.Image) void {
+    pixel_list.clearRetainingCapacity();
+    for (0..pixel_list.capacity / 2) |i| {
+        const col_index = i / 16;
+        var row_index = i % 16;
+        if (col_index % 2 == 1) row_index = 15 - row_index;
+        const pixel_base_index = (row_index * 32 + col_index) * 3;
+        const r: u8 = image.data[pixel_base_index + 0] / dimmer_divisor;
+        const g: u8 = image.data[pixel_base_index + 1] / dimmer_divisor;
+        const b: u8 = image.data[pixel_base_index + 2] / dimmer_divisor;
+
+        var little: u8 = b >> 3;
+        little |= (g >> 2) << 5;
+
+        var big: u8 = (g >> 5);
+        big |= (r >> 3) << 3;
+
+        pixel_list.appendAssumeCapacity(big);
+        pixel_list.appendAssumeCapacity(little);
+    }
+}
+
+fn createTestPattern(pixel_list: *std.ArrayList(u8), dimmer_divisor: u8) void {
+    pixel_list.clearRetainingCapacity();
+    for (0..pixel_list.capacity / 3) |i| {
         const col_index = @as(u8, @intCast(i / 16));
         var row_index = @as(u8, @intCast(i % 16));
         if (col_index % 2 == 1) row_index = 15 - row_index;
-        arrayList.appendAssumeCapacity((255 - col_index * 8) / dimmer_divisor);
-        arrayList.appendAssumeCapacity((row_index * 16) / dimmer_divisor);
-        arrayList.appendAssumeCapacity((col_index * 8) / dimmer_divisor);
+        pixel_list.appendAssumeCapacity((255 - col_index * 8) / dimmer_divisor);
+        pixel_list.appendAssumeCapacity((row_index * 16) / dimmer_divisor);
+        pixel_list.appendAssumeCapacity((col_index * 8) / dimmer_divisor);
     }
 }
